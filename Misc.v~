@@ -1,0 +1,12 @@
+Require Import List.
+
+Fixpoint index {A : Type} (n : nat) (ls : list A) : option A :=
+  match ls with
+  | nil => None
+  | h :: t => 
+    match n with 
+    | O => Some h
+    | S n' => index n' t
+    end
+  end.
+                               
