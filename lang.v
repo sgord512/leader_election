@@ -1,6 +1,6 @@
 Require Export SfLib.
 Require Export Permutation.
-
+Require Import NPeano.
 Require Import Misc. 
 
 Definition store := partial_map nat.
@@ -366,6 +366,7 @@ Fixpoint allDone (ps : list process) : bool :=
     | (Process CDone _ _ _) :: ps' => allDone ps'
     | _ => false
   end.
+
 Definition system_halted (s : system) : Prop :=
   match s with
     | System ps => allDone ps = true
@@ -384,7 +385,6 @@ Notation "'msg'" := (Id 2).
 Notation "'leaderA'" := (AId leader).
 Notation "'finishedA'" := (AId finished).
 Notation "'msgA'" := (AId msg).
-
 
 Definition leader_election : com :=
   leader ::= (ANum 0);
@@ -408,86 +408,67 @@ Definition leader_election : com :=
       FI
     FI
   END.
-        
+
+Fixpoint leaderElected (n : nat) (ps : list process) : bool :=
+  match ps with 
+    | nil => true
+    | (Process _ (st,_) _ _) :: ps' => match st leader with 
+                                         | Some m => beq_nat n m && leaderElected n ps'
+                                         | _ => false
+                                       end
+    end.
+
+Inductive leader_elected : uid -> system -> Prop :=
+  | LeaderElected : forall n proc_list,
+                      leaderElected n proc_list = true -> 
+                      leader_elected (UID n) (System proc_list).
+Hint Constructors leader_elected. 
+
+Fixpoint maxUidN (n : nat) (ps : list process) : nat :=
+  match ps with 
+    | nil => n
+    | (Process _ _ (UID n') _) :: ps' => maxUidN (if ltb n n' then n' else n) ps'
+  end.
+
+Fixpoint max_uid (ps : list process) : option uid := 
+  match ps with 
+    | nil => None
+    | (Process _ _ (UID n) _) :: ps' => Some (UID (maxUidN n ps'))
+  end.
+
+Inductive system_leader : system -> uid -> Prop :=
+  | SystemLeader : forall proc_list u,
+                     max_uid proc_list = Some u -> 
+                     system_leader (System proc_list) u.
+Hint Constructors system_leader.
+
+Inductive correctness : system -> Prop :=
+| Correctness :  forall (n : nat) (s s' : system), 
+                   s !! s' -> 
+                   system_halted s' -> 
+                   system_leader s' (UID n) -> 
+                   leader_elected (UID n) s' -> 
+                   correctness s.
+Hint Constructors correctness.         
+
+Fixpoint n_proc_list (i : nat) (n : nat) : list process :=
+  match i with 
+    | 0 => (Process leader_election empty_state (UID n) [UID 1]) :: []
+    | S i' =>  (Process leader_election empty_state (UID (n - i)) [UID (n + 1 - i)]) 
+                 :: n_proc_list i' n
+  end.
+
+Definition SystemPN (n : nat) : system := System (n_proc_list (n - 1) n).
+Lemma SystemP3Correct : correctness (SystemPN 3).
+Proof.
+  unfold SystemPN. simpl.
+
 Definition SystemP2 : system :=
   System ((Process leader_election empty_state (UID 1) [UID 2]) :: 
          [Process leader_election empty_state (UID 2) [UID 1]]).
 
 Ltac switch_to_next_proc :=
   eapply multi_step; [eapply Step_Permute; apply Permutation_cons_append | ].
-
-Tactic Notation "takes_local_step" "then" tactic(ts) :=
-  eapply multi_step; 
-  [eapply Step_LocalStep; [ apply Permutation_refl | apply LS; repeat (apply CS_SeqNext || apply CS_SeqStep); ts ] | ].
-Tactic Notation "takes_local_step" := 
-  takes_local_step then idtac.
-
-Tactic Notation "seq_next" := takes_local_step then (apply CS_SeqNext).
-Tactic Notation "takes_assign_step" := 
-  takes_local_step then (apply CS_AssignVal; apply CDone).
-Tactic Notation "takes_receive_step" :=
-  (takes_local_step then 
-    (apply CS_ReceiveStep; reflexivity; apply CDone));
-  (takes_local_step then (apply CS_SeqNext)).
-Tactic Notation "takes_send_local_step" tactic(ts) := 
-  takes_local_step then (apply CS_SendStep; ts).  
-Tactic Notation "takes_send_step" :=
-  eapply multi_step; 
-  [eapply Step_SendStep; [ apply Permutation_refl
-                         | solve [try econstructor; eauto] ] | idtac ].
-Tactic Notation "takes_while_unfold_step" :=
-  takes_local_step then (apply CS_WhileUnfold).
-Tactic Notation "takes_if_step" tactic(ts) := takes_local_step then (apply CS_IfStep; ts).
-Tactic Notation "takes_if_true_step" int_or_var(n) :=
-  takes_local_step then (apply CS_IfTrue).
-Tactic Notation "takes_if_false_step" int_or_var(n) := 
-  takes_local_step then (apply CS_IfFalse).
-Tactic Notation "takes_not_finished_step" int_or_var(n):=
-  (takes_local_step then (apply CS_IfStep;                           
-    eapply BE_Step; [apply BS_Eq1; eapply AE_Step; solve [eauto]
-                    | eapply BE_Step; solve [eauto] ]));
-  takes_if_true_step 0.
-Tactic Notation "takes_msg_not_0_step" :=
-  (takes_local_step then (apply CS_IfStep; eapply BE_Step;
-  [ apply BS_Eq1; eapply AE_Step; solve [eauto] 
-  | eapply BE_Step; [ eapply BS_EqFalse; discriminate
-                    | apply BE_Value; apply BV_false ] ]));
-  takes_if_false_step 1.
-Tactic Notation "takes_msg_not_uid_step" :=
-  (takes_local_step then (apply CS_IfStep; 
-    eapply BE_Step; [ apply BS_Eq1;
-                      eapply AE_Step; solve [eauto]
-                    | eapply BE_Step; solve [eauto]
-                    | eapply BE_Step; [ apply BS_EqFalse; discriminate 
-                                      | solve [eauto] ] ]));
-    takes_if_false_step 1.
-
-Tactic Notation "takes_msg_not_gt_uid_step" :=
-  (takes_local_step then (apply CS_IfStep; 
-    eapply BE_Step; 
-    [ apply BS_Le1;
-      eapply AE_Step; [ apply AS_UId; reflexivity 
-                      | apply AE_Value; apply AV_num ] 
-    | eapply BE_Step;
-      [ apply BS_Le2; [ apply AV_num
-                      | eapply AE_Step; [ apply AS_Id; reflexivity
-                                        | apply AE_Value; apply AV_num ] ]
-      | eapply BE_Step; 
-        [ apply BS_LeFalse; apply le_n
-        | eapply BE_Value; apply BV_false ] ] ]));
-    takes_if_false_step 1.
-
-Tactic Notation "takes_initialization_steps" :=
-  (do 2 (takes_assign_step; seq_next));
-  (takes_local_step then (apply CS_SendStep;
-    eapply AE_Step; [apply AS_UId | apply AE_Value; apply AV_num ]));
-  takes_send_step; simpl.
-(*  takes_while_unfold_step;
-  takes_not_finished_step 0.*)
-
-(* Tactic Notation "blah" := *)
-(*   match goal with  *)
-(*   | [ |-  ] => e *)
 
 Fixpoint firstCommandIsSend (c : com) : bool :=
   match c with
@@ -583,3 +564,42 @@ Proof with simpl.
   repeat c_reduction.
   reflexivity.
 Qed.
+
+Lemma SystemP2Correct : correctness (SystemPN 2).
+Proof with simpl.
+  unfold SystemPN. simpl.
+  eapply Correctness. unfold leader_election. unfold multistep.
+  repeat c_reduction. 
+  eapply multi_step. eapply Step_SendStep. apply Permutation_refl. repeat constructor. simpl.
+  repeat c_reduction.
+  switch_to_next_proc.
+  repeat c_reduction. 
+  eapply multi_step. eapply Step_SendStep. apply Permutation_refl. repeat constructor. simpl.
+  repeat c_reduction.
+  eapply multi_step. eapply Step_SendStep. apply Permutation_refl. repeat constructor. simpl.
+  repeat c_reduction.
+  switch_to_next_proc.
+  repeat c_reduction.
+  eapply multi_step. eapply Step_SendStep. apply Permutation_refl. repeat constructor. simpl.
+  repeat c_reduction.
+  eapply multi_step. eapply Step_SendStep. apply Permutation_refl. repeat constructor. simpl.
+  repeat c_reduction.
+  switch_to_next_proc.
+  repeat c_reduction. 
+  eapply multi_step. eapply Step_SendStep. apply Permutation_refl. repeat constructor. simpl.
+  repeat c_reduction.
+  switch_to_next_proc.
+  repeat c_reduction. 
+  reflexivity. 
+  (* Check that (UID 2) is the leader *)
+  eapply SystemLeader. reflexivity.
+  (* Did we actually elect proc with (UID 2) as the leader? *)
+  eapply LeaderElected. reflexivity.
+Qed.
+
+Lemma Leader
+
+Lemma SystemPNCorrect : forall n, 
+                          n > 1 -> 
+                          correctness (SystemPN n).
+  intros.

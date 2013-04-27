@@ -54,3 +54,76 @@ Inductive sync_step : system -> system -> Prop :=
                      p ==>p p' ->
                      sync_step (System sys) (System sys') -> 
                      sync_step (System (p :: sys)) (System (p' :: sys')).
+
+Tactic Notation "takes_local_step" "then" tactic(ts) :=
+  eapply multi_step; 
+  [eapply Step_LocalStep; [ apply Permutation_refl | apply LS; repeat (apply CS_SeqNext || apply CS_SeqStep); ts ] | ].
+Tactic Notation "takes_local_step" := 
+  takes_local_step then idtac.
+
+Tactic Notation "seq_next" := takes_local_step then (apply CS_SeqNext).
+Tactic Notation "takes_assign_step" := 
+  takes_local_step then (apply CS_AssignVal; apply CDone).
+Tactic Notation "takes_receive_step" :=
+  (takes_local_step then 
+    (apply CS_ReceiveStep; reflexivity; apply CDone));
+  (takes_local_step then (apply CS_SeqNext)).
+Tactic Notation "takes_send_local_step" tactic(ts) := 
+  takes_local_step then (apply CS_SendStep; ts).  
+Tactic Notation "takes_send_step" :=
+  eapply multi_step; 
+  [eapply Step_SendStep; [ apply Permutation_refl
+                         | solve [try econstructor; eauto] ] | idtac ].
+Tactic Notation "takes_while_unfold_step" :=
+  takes_local_step then (apply CS_WhileUnfold).
+Tactic Notation "takes_if_step" tactic(ts) := takes_local_step then (apply CS_IfStep; ts).
+Tactic Notation "takes_if_true_step" int_or_var(n) :=
+  takes_local_step then (apply CS_IfTrue).
+Tactic Notation "takes_if_false_step" int_or_var(n) := 
+  takes_local_step then (apply CS_IfFalse).
+Tactic Notation "takes_not_finished_step" int_or_var(n):=
+  (takes_local_step then (apply CS_IfStep;                           
+    eapply BE_Step; [apply BS_Eq1; eapply AE_Step; solve [eauto]
+                    | eapply BE_Step; solve [eauto] ]));
+  takes_if_true_step 0.
+Tactic Notation "takes_msg_not_0_step" :=
+  (takes_local_step then (apply CS_IfStep; eapply BE_Step;
+  [ apply BS_Eq1; eapply AE_Step; solve [eauto] 
+  | eapply BE_Step; [ eapply BS_EqFalse; discriminate
+                    | apply BE_Value; apply BV_false ] ]));
+  takes_if_false_step 1.
+Tactic Notation "takes_msg_not_uid_step" :=
+  (takes_local_step then (apply CS_IfStep; 
+    eapply BE_Step; [ apply BS_Eq1;
+                      eapply AE_Step; solve [eauto]
+                    | eapply BE_Step; solve [eauto]
+                    | eapply BE_Step; [ apply BS_EqFalse; discriminate 
+                                      | solve [eauto] ] ]));
+    takes_if_false_step 1.
+
+Tactic Notation "takes_msg_not_gt_uid_step" :=
+  (takes_local_step then (apply CS_IfStep; 
+    eapply BE_Step; 
+    [ apply BS_Le1;
+      eapply AE_Step; [ apply AS_UId; reflexivity 
+                      | apply AE_Value; apply AV_num ] 
+    | eapply BE_Step;
+      [ apply BS_Le2; [ apply AV_num
+                      | eapply AE_Step; [ apply AS_Id; reflexivity
+                                        | apply AE_Value; apply AV_num ] ]
+      | eapply BE_Step; 
+        [ apply BS_LeFalse; apply le_n
+        | eapply BE_Value; apply BV_false ] ] ]));
+    takes_if_false_step 1.
+
+Tactic Notation "takes_initialization_steps" :=
+  (do 2 (takes_assign_step; seq_next));
+  (takes_local_step then (apply CS_SendStep;
+    eapply AE_Step; [apply AS_UId | apply AE_Value; apply AV_num ]));
+  takes_send_step; simpl.
+(*  takes_while_unfold_step;
+  takes_not_finished_step 0.*)
+
+(* Tactic Notation "blah" := *)
+(*   match goal with  *)
+(*   | [ |-  ] => e *)
