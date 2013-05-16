@@ -1,8 +1,0 @@
-
-Inductive inbox : Type :=
-  | EmptyIn : inbox
-  | FullIn : nat -> inbox.
-
-Inductive outbox : Type :=
-  | EmptyOut : outbox
-  | FullOut : uid -> nat -> outbox.

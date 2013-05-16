@@ -1,28 +1,43 @@
 Require Import List.
-Require Export Permutation.
+Require Import Lang.
 
-Fixpoint index {A : Type} (n : nat) (ls : list A) : option A :=
-  match ls with
-  | nil => None
-  | h :: t => 
-    match n with 
-    | O => Some h
-    | S n' => index n' t
-    end
-  end.
-                               
-Fixpoint pull {A : Type} (q : list A) : option A :=   
-  match q with
-  | nil => None
-  | h :: nil => Some h
-  | (h :: t) => pull t
+Definition beq_uid uid1 uid2 :=
+  match (uid1, uid2) with
+    (UID n1, UID n2) => beq_nat n1 n2
   end.
 
-Fixpoint remove_last {A : Type} (q : list A) : list A :=
-  match q with
-  | nil => nil
-  | h :: nil => nil
-  | (h :: t) => h :: (remove_last t)
-  end.
+Theorem beq_uid_refl : forall i,
+  true = beq_uid i i.
+Proof.
+  intros. destruct i.
+  apply beq_nat_refl.  Qed.
 
-Lemma
+Theorem beq_uid_eq : forall i1 i2,
+  true = beq_uid i1 i2 -> i1 = i2.
+Proof.
+  intros i1 i2 H.
+  destruct i1. destruct i2.
+  apply beq_nat_eq in H. subst.
+  reflexivity.  Qed.
+
+Theorem beq_uid_false_not_eq : forall i1 i2,
+  beq_uid i1 i2 = false -> i1 <> i2.
+Proof.
+  intros i1 i2 H.
+  destruct i1. destruct i2.
+  apply beq_nat_false in H.
+  intros C. apply H. inversion C. reflexivity.  Qed.
+
+Theorem not_eq_beq_uid_false : forall i1 i2,
+  i1 <> i2 -> beq_uid i1 i2 = false.
+Proof.
+  intros i1 i2 H.
+  destruct i1. destruct i2.
+  assert (n <> n0).
+    intros C. subst. apply H. reflexivity.
+  apply not_eq_beq_false. assumption.  Qed.
+
+Theorem beq_uid_sym : forall i1 i2,
+  beq_uid i1 i2 = beq_uid i2 i1.
+Proof.
+  intros i1 i2. destruct i1. destruct i2. apply beq_nat_sym. Qed.
